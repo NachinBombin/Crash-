@@ -1,16 +1,12 @@
 include("shared.lua")
 
--- ─── Particle helpers ─────────────────────────────────────────────────────
+-- ─── Particle helpers ──────────────────────────────────────────────────
 
-local activeEmitters = {}
+-- Verified working GMod particle textures (no black square)
+local TEX_FIRE  = "effects/fire_cloud1"
+local TEX_SMOKE = "particle/particle_smokegrenade"
+local TEX_SPARK = "effects/spark"
 
-local function SafeEmitter( pos )
-    local e = ParticleEmitter( pos )
-    table.insert( activeEmitters, e )
-    return e
-end
-
--- Sparks burst at a position
 local function DoBurstSparks( pos, count )
     local ed = EffectData()
     ed:SetOrigin( pos )
@@ -22,7 +18,6 @@ local function DoBurstSparks( pos, count )
     util.Effect( "MetalSparks", ed )
 end
 
--- Single explosion flash at pos, scale 1-3
 local function DoExplosion( pos, scale )
     local ed = EffectData()
     ed:SetOrigin( pos )
@@ -33,21 +28,21 @@ local function DoExplosion( pos, scale )
     DoBurstSparks( pos, 4 )
 end
 
--- Looping fire + co-smoke emitter, runs for `duration` seconds
 local function StartFireAt( pos, duration, size )
     size = size or 1
     local endTime = CurTime() + duration
-    local emitter = SafeEmitter( pos )
+    local emitter = ParticleEmitter( pos )
     if not emitter then return end
 
-    timer.Create( "PlaneFire_" .. math.random(1,999999), 0.04, 0, function()
+    local tname = "PlaneFire_" .. tostring(pos) .. math.random(1,999999)
+    timer.Create( tname, 0.04, 0, function()
         if not IsValid( emitter ) or CurTime() > endTime then
             if IsValid( emitter ) then emitter:Finish() end
+            timer.Remove( tname )
             return
         end
 
-        -- fire tongue
-        local p = emitter:Add( "effects/fire_cloud1",
+        local p = emitter:Add( TEX_FIRE,
             pos + Vector( math.random(-12,12)*size, math.random(-12,12)*size, math.random(0,20)*size ) )
         if p then
             p:SetVelocity( Vector( math.random(-15,15), math.random(-15,15), math.random(70,180)*size ) )
@@ -63,67 +58,68 @@ local function StartFireAt( pos, duration, size )
             p:SetCollide( false )
         end
 
-        -- smoke rising from fire
-        local ps = emitter:Add( "particle/smokesprite",
+        local ps = emitter:Add( TEX_SMOKE,
             pos + Vector( math.random(-20,20)*size, math.random(-20,20)*size, math.random(30,60)*size ) )
         if ps then
             ps:SetVelocity( Vector( math.random(-20,20), math.random(-20,20), math.random(50,120)*size ) )
             ps:SetDieTime( math.random(4,8) )
-            ps:SetStartAlpha( 160 )
+            ps:SetStartAlpha( 120 )
             ps:SetEndAlpha( 0 )
-            ps:SetStartSize( math.random(40,80)*size )
-            ps:SetEndSize( math.random(180,360)*size )
-            ps:SetColor( 25, 22, 18 )
+            ps:SetStartSize( math.random(30,60)*size )
+            ps:SetEndSize( math.random(120,240)*size )
+            ps:SetColor( 30, 26, 22 )
             ps:SetGravity( Vector(0,0,6) )
             ps:SetCollide( false )
         end
     end )
 end
 
--- Rolling black smoke column, runs for `duration` seconds
 local function StartSmokeColumnAt( pos, duration, size )
     size = size or 1
     local endTime = CurTime() + duration
-    local emitter = SafeEmitter( pos )
+    local emitter = ParticleEmitter( pos )
     if not emitter then return end
 
-    timer.Create( "PlaneSmoke_" .. math.random(1,999999), 0.06, 0, function()
+    local tname = "PlaneSmoke_" .. tostring(pos) .. math.random(1,999999)
+    timer.Create( tname, 0.06, 0, function()
         if not IsValid( emitter ) or CurTime() > endTime then
             if IsValid( emitter ) then emitter:Finish() end
+            timer.Remove( tname )
             return
         end
 
-        local p = emitter:Add( "particle/smokesprite",
+        local p = emitter:Add( TEX_SMOKE,
             pos + Vector( math.random(-25,25)*size, math.random(-25,25)*size, math.random(0,15) ) )
         if p then
             p:SetVelocity( Vector( math.random(-25,25), math.random(-25,25), math.random(90,240)*size ) )
             p:SetDieTime( math.random(6,12) )
-            p:SetStartAlpha( 200 )
+            p:SetStartAlpha( 180 )
             p:SetEndAlpha( 0 )
-            p:SetStartSize( math.random(60,120)*size )
-            p:SetEndSize( math.random(280,550)*size )
+            p:SetStartSize( math.random(40,80)*size )
+            p:SetEndSize( math.random(200,420)*size )
             p:SetRoll( math.Rand(0,360) )
             p:SetRollDelta( math.Rand(-0.8,0.8) )
-            p:SetColor( 18, 16, 14 )
+            p:SetColor( 22, 19, 16 )
             p:SetGravity( Vector(0,0,10) )
             p:SetCollide( false )
         end
     end )
 end
 
--- Trailing sparks stream, short-lived (impact scrape feel)
 local function StartSparkStream( pos, duration )
     local endTime = CurTime() + duration
-    local emitter = SafeEmitter( pos )
+    local emitter = ParticleEmitter( pos )
     if not emitter then return end
 
-    timer.Create( "PlaneSpark_" .. math.random(1,999999), 0.03, 0, function()
+    local tname = "PlaneSpark_" .. tostring(pos) .. math.random(1,999999)
+    timer.Create( tname, 0.03, 0, function()
         if not IsValid( emitter ) or CurTime() > endTime then
             if IsValid( emitter ) then emitter:Finish() end
+            timer.Remove( tname )
             return
         end
 
-        local p = emitter:Add( "effects/spark",
+        local p = emitter:Add( TEX_SPARK,
             pos + Vector( math.random(-30,30), math.random(-30,30), math.random(0,10) ) )
         if p then
             p:SetVelocity( Vector( math.random(-200,200), math.random(-200,200), math.random(100,350) ) )
@@ -140,90 +136,82 @@ local function StartSparkStream( pos, duration )
     end )
 end
 
--- ─── Net receiver ─────────────────────────────────────────────────────────
--- Server sends the crash origin once the debris spawns so clients know
--- where to anchor effects, regardless of map.
+-- ─── Net receiver ──────────────────────────────────────────────────
+-- Server sends the position of fuseA AFTER it has spawned and settled
+-- (t=14.96 + 0.15s buffer = t=15.1). This is the true ground impact point,
+-- not the animated entity's starting origin which is far away.
 
 net.Receive( "PlaneCrashEffects", function()
     local org = net.ReadVector()
 
-    -- ── IMPACT MOMENT  (t = 0 relative to debris spawn) ──────────────────
-
-    -- Initial massive explosion at point of first ground contact
+    -- Impact moment
     DoExplosion( org, 3 )
     DoExplosion( org + Vector(  80,  60, 20 ), 2 )
     DoExplosion( org + Vector( -90,  40, 15 ), 2 )
-
-    -- Spark shower from initial contact
     DoBurstSparks( org, 6 )
 
-    -- Scraping sparks as fuselage slides (3 sec)
-    StartSparkStream( org,                          3.0 )
-    StartSparkStream( org + Vector( 120,  80, 0 ),  2.5 )
-    StartSparkStream( org + Vector( -100, 60, 0 ),  2.0 )
+    StartSparkStream( org,                         3.0 )
+    StartSparkStream( org + Vector( 120,  80, 0 ), 2.5 )
+    StartSparkStream( org + Vector(-100,  60, 0 ), 2.0 )
 
-    -- Wings shear off — wing-root explosions
+    -- Wing shear explosions
     timer.Simple( 0.3, function()
-        DoExplosion( org + Vector( 200,  0, 10 ), 2.2 )  -- right wing root
-        DoExplosion( org + Vector(-200,  0, 10 ), 2.2 )  -- left wing root
+        DoExplosion( org + Vector( 200,  0, 10 ), 2.2 )
+        DoExplosion( org + Vector(-200,  0, 10 ), 2.2 )
         DoBurstSparks( org + Vector( 200, 0, 10 ), 4 )
         DoBurstSparks( org + Vector(-200, 0, 10 ), 4 )
     end )
 
-    -- Fuselage section explosions cascading front→back
-    timer.Simple( 0.7,  function() DoExplosion( org + Vector( 80,  0, 5 ), 1.8 ) end )
-    timer.Simple( 1.1,  function() DoExplosion( org + Vector(  0,  0, 5 ), 2.0 ) end )
-    timer.Simple( 1.5,  function() DoExplosion( org + Vector(-60,  0, 5 ), 1.5 ) end )
-    timer.Simple( 2.0,  function()
+    -- Cascading fuselage explosions
+    timer.Simple( 0.7, function() DoExplosion( org + Vector( 80, 0, 5 ), 1.8 ) end )
+    timer.Simple( 1.1, function() DoExplosion( org + Vector(  0, 0, 5 ), 2.0 ) end )
+    timer.Simple( 1.5, function() DoExplosion( org + Vector(-60, 0, 5 ), 1.5 ) end )
+    timer.Simple( 2.0, function()
         DoExplosion( org + Vector(-120, 0, 8 ), 1.8 )
         DoBurstSparks( org + Vector(-120, 0, 8), 3 )
     end )
 
-    -- ── FIRE  (starts at impact, burns for a long time) ──────────────────
-    local fireDuration = 240  -- 4 minutes
+    -- Fire (4 minutes)
+    local fireDuration = 240
+    StartFireAt( org,                          fireDuration, 2.0 )
+    StartFireAt( org + Vector(  90,  50, 0 ),  fireDuration, 1.6 )
+    StartFireAt( org + Vector( -80, -40, 0 ),  fireDuration, 1.4 )
+    StartFireAt( org + Vector( 160,   0, 0 ),  fireDuration, 1.2 )
+    StartFireAt( org + Vector(-160,   0, 0 ),  fireDuration, 1.2 )
+    StartFireAt( org + Vector(   0, 160, 0 ),  fireDuration, 1.0 )
 
-    -- Main fuselage fires — several overlapping zones
-    StartFireAt( org,                           fireDuration, 2.0 )
-    StartFireAt( org + Vector(  90,  50, 0 ),   fireDuration, 1.6 )
-    StartFireAt( org + Vector( -80, -40, 0 ),   fireDuration, 1.4 )
-    StartFireAt( org + Vector( 160,   0, 0 ),   fireDuration, 1.2 )  -- right wing
-    StartFireAt( org + Vector(-160,   0, 0 ),   fireDuration, 1.2 )  -- left wing
-    StartFireAt( org + Vector(   0, 160, 0 ),   fireDuration, 1.0 )  -- tail cone
+    -- Smoke columns
+    StartSmokeColumnAt( org,                          fireDuration, 2.0 )
+    StartSmokeColumnAt( org + Vector( 100,  80, 80 ), fireDuration, 1.5 )
+    StartSmokeColumnAt( org + Vector(-120, -60, 60 ), fireDuration, 1.2 )
 
-    -- ── SMOKE  (heavy rolling column from crash site) ────────────────────
-    StartSmokeColumnAt( org,                          fireDuration, 2.5 )
-    StartSmokeColumnAt( org + Vector( 100,  80, 80 ), fireDuration, 1.8 )
-    StartSmokeColumnAt( org + Vector(-120, -60, 60 ), fireDuration, 1.5 )
-
-    -- ── SECONDARY EXPLOSIONS  (sync with existing screen shakes) ─────────
-    -- The server already fires util.ScreenShake at t+20.5, 23, 24, 26
-    -- relative to ENT spawn.  Debris spawns at t=14.95, so offsets here
-    -- are: 20.5-14.95=5.55, 23-14.95=8.05, 24-14.95=9.05, 26-14.95=11.05
-
+    -- Secondary blasts synced to existing ScreenShake calls
+    -- Server shakes at t=20.5,23,24,26 from ENT spawn; debris at t=14.95
+    -- Offsets here: 20.5-14.95=5.55, 23-14.95=8.05, 24-14.95=9.05, 26-14.95=11.05
     timer.Simple( 5.55, function()
         DoExplosion( org + Vector( math.random(-80,80), math.random(-80,80), 10 ), 2.5 )
         DoBurstSparks( org, 5 )
     end )
     timer.Simple( 8.05, function()
         DoExplosion( org + Vector( math.random(-60,60), math.random(-60,60),  8 ), 2.0 )
-        DoBurstSparks( org + Vector(50, 30, 0), 3 )
+        DoBurstSparks( org + Vector(50,30,0), 3 )
     end )
     timer.Simple( 9.05, function()
         DoExplosion( org + Vector( math.random(-50,50), math.random(-50,50),  5 ), 1.8 )
     end )
     timer.Simple( 11.05, function()
         DoExplosion( org + Vector( math.random(-40,40), math.random(-40,40),  5 ), 1.5 )
-        DoBurstSparks( org + Vector(-40, 20, 0), 2 )
+        DoBurstSparks( org + Vector(-40,20,0), 2 )
     end )
 
-    -- Dying embers / last sparks tailing off after 30 seconds
+    -- Dying embers
     timer.Simple( 30, function()
         DoBurstSparks( org, 2 )
-        DoBurstSparks( org + Vector( 80, 40, 0), 1 )
+        DoBurstSparks( org + Vector(80,40,0), 1 )
     end )
 end )
 
--- ─── Entity callbacks ─────────────────────────────────────────────────────
+-- ─── Entity callbacks ──────────────────────────────────────────────────
 
 function ENT:Draw()
     self:DrawModel()
