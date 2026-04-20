@@ -5,6 +5,8 @@ AddCSLuaFile("shared.lua")
 
 include("shared.lua")
 
+util.AddNetworkString( "PlaneCrashEffects" )
+
 function ENT:Initialize()
    local gonetimer = cvars.Number( "l4dplanecrash_gonetime", -1 )
    local planesound = cvars.String( "l4dplanecrash_sound", "animation/airport_rough_crash_seq.wav" )
@@ -109,6 +111,14 @@ function ENT:Initialize()
    timer.Simple( 14.96, function() fuseL:SetSequence( "boom" ) end )
    timer.Simple( 14.95, function() fuseL:Spawn() end )
    timer.Simple( 14.96, function() fuseL:ResetSequence( "boom" ) end )
+
+   -- Broadcast crash position to all clients the moment debris spawns
+   timer.Simple( 14.95, function()
+      net.Start( "PlaneCrashEffects" )
+         net.WriteVector( spawnpos )
+      net.Broadcast()
+   end )
+
    timer.Simple( 20.5, function() util.ScreenShake( spawnpos, 4, 100, 4, 16000 ) end )
    timer.Simple( 23.0, function() util.ScreenShake( spawnpos, 4, 100, 4, 16000 ) end )
    timer.Simple( 24.0, function() util.ScreenShake( spawnpos, 4, 100, 4, 16000 ) end )
