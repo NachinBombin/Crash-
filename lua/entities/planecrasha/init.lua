@@ -112,13 +112,24 @@ function ENT:Initialize()
    timer.Simple( 14.95, function() fuseL:Spawn() end )
    timer.Simple( 14.96, function() fuseL:ResetSequence( "boom" ) end )
 
-   -- Wait a tick after fuseA has spawned to read its actual world position.
-   -- This is the true crash site on the ground, not the animated entity origin.
-   timer.Simple( 15.1, function()
+   -- Wait until the boom animation has visually settled (~2.5s in).
+   -- GetBonePosition(0) returns the root bone world position, which follows
+   -- the animation transform -- unlike GetPos() which stays at spawn origin.
+   timer.Simple( 17.5, function()
       if not IsValid( fuseA ) then return end
-      local crashPos = fuseA:GetPos()
+      local bonePos, _ = fuseA:GetBonePosition( 0 )
+      -- Fallback: if bone returns nil or zero vector, drop a traceline from
+      -- spawnpos downward to find the ground directly below.
+      if not bonePos or bonePos == Vector(0,0,0) then
+         local tr = util.TraceLine({
+            start  = spawnpos + Vector(0,0,100),
+            endpos = spawnpos - Vector(0,0,2000),
+            mask   = MASK_SOLID_BRUSHONLY
+         })
+         bonePos = tr.Hit and tr.HitPos or spawnpos
+      end
       net.Start( "PlaneCrashEffects" )
-         net.WriteVector( crashPos )
+         net.WriteVector( bonePos )
       net.Broadcast()
    end )
 
