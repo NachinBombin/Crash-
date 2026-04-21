@@ -4,7 +4,12 @@ local TEX_FIRE  = "effects/fire_cloud1"
 local TEX_SMOKE = "particle/particle_smokegrenade"
 local TEX_SPARK = "effects/spark"
 
--- ─── Helpers ────────────────────────────────────────────────────
+-- Calibrated: spawnpos(-439,-28,-138) -> crash site(-2102,-157,-134)
+local CRASH_OFFSET = Vector( -1663.26, -129.64, 3.17 )
+
+-- -------------------------------------------------------------------
+-- Helpers
+-- -------------------------------------------------------------------
 
 local function DoBurstSparks( pos, count )
     local ed = EffectData()
@@ -32,7 +37,7 @@ local function StartFireAt( pos, duration, size )
     local endTime = CurTime() + duration
     local emitter = ParticleEmitter( pos )
     if not emitter then return end
-    local tname = "PlaneFire_" .. tostring(pos) .. math.random(1,999999)
+    local tname = "PlaneFire_" .. math.random(1,999999)
     timer.Create( tname, 0.04, 0, function()
         if not IsValid( emitter ) or CurTime() > endTime then
             if IsValid( emitter ) then emitter:Finish() end
@@ -55,10 +60,35 @@ local function StartFireAt( pos, duration, size )
         if ps then
             ps:SetVelocity( Vector( math.random(-20,20), math.random(-20,20), math.random(50,120)*size ) )
             ps:SetDieTime( math.random(4,8) )
-            ps:SetStartAlpha( 120 ) ps:SetEndAlpha( 0 )
+            ps:SetStartAlpha( 130 ) ps:SetEndAlpha( 0 )
             ps:SetStartSize( math.random(30,60)*size ) ps:SetEndSize( math.random(120,240)*size )
             ps:SetColor( 30, 26, 22 )
             ps:SetGravity( Vector(0,0,6) ) ps:SetCollide( false )
+        end
+    end )
+end
+
+local function StartThinSmokeAt( pos, duration, size )
+    size = size or 1
+    local endTime = CurTime() + duration
+    local emitter = ParticleEmitter( pos )
+    if not emitter then return end
+    local tname = "PlaneThinSmoke_" .. math.random(1,999999)
+    timer.Create( tname, 0.07, 0, function()
+        if not IsValid( emitter ) or CurTime() > endTime then
+            if IsValid( emitter ) then emitter:Finish() end
+            timer.Remove( tname )
+            return
+        end
+        local p = emitter:Add( TEX_SMOKE,
+            pos + Vector( math.random(-8,8)*size, math.random(-8,8)*size, 0 ) )
+        if p then
+            p:SetVelocity( Vector( math.random(-10,10), math.random(-10,10), math.random(30,80)*size ) )
+            p:SetDieTime( math.random(3,6) )
+            p:SetStartAlpha( 80 ) p:SetEndAlpha( 0 )
+            p:SetStartSize( math.random(8,20)*size ) p:SetEndSize( math.random(60,140)*size )
+            p:SetColor( 55, 50, 44 )
+            p:SetGravity( Vector(0,0,4) ) p:SetCollide( false )
         end
     end )
 end
@@ -68,8 +98,8 @@ local function StartSmokeColumnAt( pos, duration, size )
     local endTime = CurTime() + duration
     local emitter = ParticleEmitter( pos )
     if not emitter then return end
-    local tname = "PlaneSmoke_" .. tostring(pos) .. math.random(1,999999)
-    timer.Create( tname, 0.06, 0, function()
+    local tname = "PlaneSmoke_" .. math.random(1,999999)
+    timer.Create( tname, 0.05, 0, function()
         if not IsValid( emitter ) or CurTime() > endTime then
             if IsValid( emitter ) then emitter:Finish() end
             timer.Remove( tname )
@@ -80,7 +110,7 @@ local function StartSmokeColumnAt( pos, duration, size )
         if p then
             p:SetVelocity( Vector( math.random(-25,25), math.random(-25,25), math.random(90,240)*size ) )
             p:SetDieTime( math.random(6,12) )
-            p:SetStartAlpha( 180 ) p:SetEndAlpha( 0 )
+            p:SetStartAlpha( 200 ) p:SetEndAlpha( 0 )
             p:SetStartSize( math.random(40,80)*size ) p:SetEndSize( math.random(200,420)*size )
             p:SetRoll( math.Rand(0,360) ) p:SetRollDelta( math.Rand(-0.8,0.8) )
             p:SetColor( 22, 19, 16 )
@@ -93,7 +123,7 @@ local function StartSparkStream( pos, duration )
     local endTime = CurTime() + duration
     local emitter = ParticleEmitter( pos )
     if not emitter then return end
-    local tname = "PlaneSpark_" .. tostring(pos) .. math.random(1,999999)
+    local tname = "PlaneSpark_" .. math.random(1,999999)
     timer.Create( tname, 0.03, 0, function()
         if not IsValid( emitter ) or CurTime() > endTime then
             if IsValid( emitter ) then emitter:Finish() end
@@ -114,126 +144,135 @@ local function StartSparkStream( pos, duration )
     end )
 end
 
--- Draws a glowing 3D cross at pos for N seconds -- visible in-world for calibration
-local function Draw3DMarker( pos, label, duration )
-    local endTime = CurTime() + ( duration or 20 )
-    local tname = "PlaneMarker_" .. label .. math.random(1,9999)
-    hook.Add( "PostDrawOpaqueRenderables", tname, function()
-        if CurTime() > endTime then
-            hook.Remove( "PostDrawOpaqueRenderables", tname )
-            return
-        end
-        render.SetColorMaterial()
-        render.DrawSphere( pos, 12, 8, 8, Color(255,50,0,255) )
-        render.DrawLine( pos - Vector(60,0,0), pos + Vector(60,0,0), Color(255,255,0), true )
-        render.DrawLine( pos - Vector(0,60,0), pos + Vector(0,60,0), Color(255,255,0), true )
-        render.DrawLine( pos - Vector(0,0,60), pos + Vector(0,0,60), Color(0,200,255), true )
-        -- label in 3D
-        local ang = LocalPlayer():EyeAngles()
-        ang:RotateAroundAxis( ang:Forward(), 90 )
-        ang:RotateAroundAxis( ang:Right(), 90 )
-        cam.Start3D2D( pos + Vector(0,0,30), ang, 0.15 )
-            draw.SimpleText( label, "DermaDefaultBold", 0, 0, Color(255,255,0), TEXT_ALIGN_CENTER )
-        cam.End3D2D()
-    end )
+-- Scatter N fire/spark/smoke emitters randomly within radius of centre
+local function ScatterFire( centre, count, radius, duration, sizeMin, sizeMax )
+    for i = 1, count do
+        local offset = Vector(
+            math.random( -radius, radius ),
+            math.random( -radius, radius ),
+            math.random( 0, 20 )
+        )
+        timer.Simple( math.random(0,15)/10, function()
+            StartFireAt( centre + offset, duration, math.Rand( sizeMin, sizeMax ) )
+        end )
+    end
 end
 
--- ─── Main effects trigger ─────────────────────────────────────────────
+local function ScatterSparks( centre, count, radius, duration )
+    for i = 1, count do
+        local offset = Vector(
+            math.random( -radius, radius ),
+            math.random( -radius, radius ),
+            math.random( 0, 10 )
+        )
+        timer.Simple( math.random(0,8)/10, function()
+            StartSparkStream( centre + offset, duration )
+            DoBurstSparks( centre + offset, math.random(1,3) )
+        end )
+    end
+end
+
+local function ScatterThinSmoke( centre, count, radius, duration )
+    for i = 1, count do
+        local offset = Vector(
+            math.random( -radius, radius ),
+            math.random( -radius, radius ),
+            math.random( 0, 10 )
+        )
+        timer.Simple( math.random(0,20)/10, function()
+            StartThinSmokeAt( centre + offset, duration, math.Rand( 0.5, 1.2 ) )
+        end )
+    end
+end
+
+-- -------------------------------------------------------------------
+-- Main net receiver
+-- -------------------------------------------------------------------
 
 net.Receive( "PlaneCrashEffects", function()
-    local org     = net.ReadVector()
-    local fwd     = net.ReadVector()
+    local org = net.ReadVector()
+    local fwd = net.ReadVector()
 
-    print( "[PLANECRASH CLIENT] PlaneCrashEffects received!" )
-    print( "[PLANECRASH CLIENT] org (spawnpos) = " .. tostring( org ) )
-    print( "[PLANECRASH CLIENT] forward dir   = " .. tostring( fwd ) )
+    local crashPos = org + CRASH_OFFSET
 
-    -- Draw in-world marker at spawnpos so you can see exactly where it is
-    Draw3DMarker( org, "SPAWNPOS", 30 )
+    print( "[PLANECRASH CLIENT] spawnpos  = " .. tostring(org) )
+    print( "[PLANECRASH CLIENT] crashPos  = " .. tostring(crashPos) )
 
-    -- Spawn effects at org (= spawnpos for now).
-    -- Once you tell us the offset from spawnpos to the visual crash site
-    -- (read from the console prints + in-world marker), we replace org here
-    -- with the calibrated position.
-    local crashPos = org  -- <-- CALIBRATION POINT: adjust this after reading debug output
+    -- Immediate big explosions
+    DoExplosion( crashPos,                               3.0 )
+    DoExplosion( crashPos + Vector(  100,  60, 20 ),     2.2 )
+    DoExplosion( crashPos + Vector( -110,  40, 15 ),     2.0 )
+    DoExplosion( crashPos + Vector(  200,   0, 10 ),     1.8 )
+    DoExplosion( crashPos + Vector( -200,   0, 10 ),     1.8 )
 
-    print( "[PLANECRASH CLIENT] Spawning effects at crashPos = " .. tostring( crashPos ) )
+    -- Sparks: fuselage centre, wings, nose, tail
+    ScatterSparks( crashPos,                         8, 120, 3.5 )
+    ScatterSparks( crashPos + Vector(  220,  80, 0), 5,  80, 2.5 )
+    ScatterSparks( crashPos + Vector( -240, -60, 0), 5,  80, 2.5 )
+    ScatterSparks( crashPos + fwd * 180,             4,  60, 2.0 )
+    ScatterSparks( crashPos - fwd * 160,             4,  60, 2.0 )
 
-    DoExplosion( crashPos, 3 )
-    DoExplosion( crashPos + Vector(  80,  60, 20 ), 2 )
-    DoExplosion( crashPos + Vector( -90,  40, 15 ), 2 )
-    DoBurstSparks( crashPos, 6 )
+    -- Fire: anchored key points + scattered across full debris field
+    local fd = 240
+    StartFireAt( crashPos,                           fd, 2.2 )
+    StartFireAt( crashPos + Vector(  30,  25, 0 ),   fd, 1.8 )
+    StartFireAt( crashPos + Vector( -25, -30, 0 ),   fd, 1.6 )
+    StartFireAt( crashPos + Vector(  180,  70, 0 ),  fd, 1.5 )  -- left wing root
+    StartFireAt( crashPos + Vector( -200, -50, 0 ),  fd, 1.5 )  -- right wing root
+    StartFireAt( crashPos + fwd * 200,               fd, 1.2 )  -- nose
+    StartFireAt( crashPos - fwd * 150,               fd, 1.0 )  -- tail
+    ScatterFire(  crashPos, 14, 350, fd, 0.6, 1.8 )             -- debris spread
 
-    StartSparkStream( crashPos,                          3.0 )
-    StartSparkStream( crashPos + Vector( 120,  80, 0 ),  2.5 )
-    StartSparkStream( crashPos + Vector(-100,  60, 0 ),  2.0 )
+    -- Smoke: heavy columns + thin wisps across debris
+    StartSmokeColumnAt( crashPos,                           fd, 2.2 )
+    StartSmokeColumnAt( crashPos + Vector(  120,  80, 100), fd, 1.6 )
+    StartSmokeColumnAt( crashPos + Vector( -140, -70,  80), fd, 1.4 )
+    StartSmokeColumnAt( crashPos + fwd * 180,               fd, 1.2 )
+    ScatterThinSmoke( crashPos, 18, 380, fd )
 
-    timer.Simple( 0.3, function()
-        DoExplosion( crashPos + Vector( 200,  0, 10 ), 2.2 )
-        DoExplosion( crashPos + Vector(-200,  0, 10 ), 2.2 )
-        DoBurstSparks( crashPos + Vector( 200, 0, 10 ), 4 )
-        DoBurstSparks( crashPos + Vector(-200, 0, 10 ), 4 )
+    -- Rolling secondary explosions
+    timer.Simple( 0.4, function()
+        DoExplosion( crashPos + Vector( math.random(-100,100), math.random(-100,100), 12 ), 2.5 )
+        ScatterSparks( crashPos, 4, 100, 1.5 )
     end )
-    timer.Simple( 0.7, function() DoExplosion( crashPos + Vector( 80, 0, 5 ), 1.8 ) end )
-    timer.Simple( 1.1, function() DoExplosion( crashPos + Vector(  0, 0, 5 ), 2.0 ) end )
-    timer.Simple( 1.5, function() DoExplosion( crashPos + Vector(-60, 0, 5 ), 1.5 ) end )
-    timer.Simple( 2.0, function()
-        DoExplosion( crashPos + Vector(-120, 0, 8 ), 1.8 )
-        DoBurstSparks( crashPos + Vector(-120, 0, 8), 3 )
+    timer.Simple( 0.9, function() DoExplosion( crashPos + Vector(  90, 0, 8 ), 1.8 ) end )
+    timer.Simple( 1.4, function() DoExplosion( crashPos + Vector( -70, 0, 8 ), 1.6 ) end )
+    timer.Simple( 2.1, function()
+        DoExplosion( crashPos + Vector( -130, 0, 10 ), 2.0 )
+        DoBurstSparks( crashPos + Vector(-130,0,10), 4 )
     end )
 
-    local fireDuration = 240
-    StartFireAt( crashPos,                           fireDuration, 2.0 )
-    StartFireAt( crashPos + Vector(  90,  50, 0 ),   fireDuration, 1.6 )
-    StartFireAt( crashPos + Vector( -80, -40, 0 ),   fireDuration, 1.4 )
-    StartFireAt( crashPos + Vector( 160,   0, 0 ),   fireDuration, 1.2 )
-    StartFireAt( crashPos + Vector(-160,   0, 0 ),   fireDuration, 1.2 )
-    StartFireAt( crashPos + Vector(   0, 160, 0 ),   fireDuration, 1.0 )
-
-    StartSmokeColumnAt( crashPos,                           fireDuration, 2.0 )
-    StartSmokeColumnAt( crashPos + Vector( 100,  80, 80 ),  fireDuration, 1.5 )
-    StartSmokeColumnAt( crashPos + Vector(-120, -60, 60 ),  fireDuration, 1.2 )
-
-    -- Secondary blasts synced to ScreenShake (t=20.5,23,24,26 from ENT spawn)
-    -- Net fires at t=14.95, so offsets are: 5.55, 8.05, 9.05, 11.05
+    -- Synced with ScreenShake (net fires t=14.95; shakes at t=20.5,23,24,26)
     timer.Simple( 5.55, function()
-        DoExplosion( crashPos + Vector( math.random(-80,80), math.random(-80,80), 10 ), 2.5 )
-        DoBurstSparks( crashPos, 5 )
-        print( "[PLANECRASH CLIENT] Secondary explosion 1 fired" )
+        DoExplosion( crashPos + Vector( math.random(-90,90), math.random(-90,90), 10 ), 2.5 )
+        ScatterSparks( crashPos, 3, 80, 1.2 )
     end )
     timer.Simple( 8.05, function()
-        DoExplosion( crashPos + Vector( math.random(-60,60), math.random(-60,60),  8 ), 2.0 )
+        DoExplosion( crashPos + Vector( math.random(-70,70), math.random(-70,70),  8 ), 2.0 )
         DoBurstSparks( crashPos + Vector(50,30,0), 3 )
-        print( "[PLANECRASH CLIENT] Secondary explosion 2 fired" )
     end )
     timer.Simple( 9.05, function()
-        DoExplosion( crashPos + Vector( math.random(-50,50), math.random(-50,50),  5 ), 1.8 )
-        print( "[PLANECRASH CLIENT] Secondary explosion 3 fired" )
+        DoExplosion( crashPos + Vector( math.random(-60,60), math.random(-60,60),  6 ), 1.8 )
     end )
     timer.Simple( 11.05, function()
-        DoExplosion( crashPos + Vector( math.random(-40,40), math.random(-40,40),  5 ), 1.5 )
+        DoExplosion( crashPos + Vector( math.random(-50,50), math.random(-50,50),  6 ), 1.5 )
         DoBurstSparks( crashPos + Vector(-40,20,0), 2 )
-        print( "[PLANECRASH CLIENT] Secondary explosion 4 fired" )
     end )
 
+    -- Late cooling-metal sparks
     timer.Simple( 30, function()
         DoBurstSparks( crashPos, 2 )
-        DoBurstSparks( crashPos + Vector(80,40,0), 1 )
+        DoBurstSparks( crashPos + Vector(  90,  40, 0 ), 1 )
+        DoBurstSparks( crashPos + Vector( -80, -30, 0 ), 1 )
     end )
 end )
 
--- ─── Debug position receiver ────────────────────────────────────────────
--- Receives fuseA:GetPos() snapshots from the server at t=17, 20, 23
--- and draws in-world markers + console prints for calibration.
-
+-- Debug receiver kept for re-calibration
 net.Receive( "PlaneCrashDebug", function()
     local t   = net.ReadFloat()
     local pos = net.ReadVector()
     print( "[PLANECRASH CLIENT DEBUG t=" .. t .. "] fuseA:GetPos() = " .. tostring( pos ) )
-    Draw3DMarker( pos, "fuseA t=" .. t, 40 )
 end )
-
--- ─── Entity callbacks ─────────────────────────────────────────────────
 
 function ENT:Draw()
     self:DrawModel()
