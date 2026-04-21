@@ -5,13 +5,6 @@ include("shared.lua")
 util.AddNetworkString( "PlaneCrashEffects" )
 util.AddNetworkString( "PlaneCrashDebug" )
 
--- -------------------------------------------------------------------
--- Debris prop definitions
--- { model, count, speed, arc (upward vel), onFire, originRadius }
--- arc   = Z velocity added on launch
--- speed = horizontal fling speed
--- onFire = true -> prop:Ignite()
--- -------------------------------------------------------------------
 local DEBRIS_PROPS = {
     { mdl="models/props_junk/propane_tank001a.mdl",       count=10, speed=900,  arc=600,  fire=true  },
     { mdl="models/props_junk/wood_crate001a_damaged.mdl", count=4,  speed=600,  arc=450,  fire=true  },
@@ -25,8 +18,6 @@ local DEBRIS_PROPS = {
     { mdl="models/props_c17/BriefCase001a.mdl",           count=2,  speed=600,  arc=420,  fire=true  },
 }
 
--- TNT blast schedule: { delay, radius, damage }
--- First blasts are enormous (4000u radius), shrinking over time
 local TNT_BLASTS = {
     { t=0.0,  dmg=2000, radius=4000 },
     { t=0.3,  dmg=1800, radius=3600 },
@@ -44,18 +35,13 @@ local TNT_BLASTS = {
 }
 
 local function LaunchDebris( crashPos, spawnAngles )
-    local spawnAng = spawnAngles
-
     for _, def in ipairs( DEBRIS_PROPS ) do
         for i = 1, def.count do
-            -- stagger spawns slightly so they don't all pop at once
             timer.Simple( math.Rand(0, 2.5), function()
                 local prop = ents.Create("prop_physics")
                 if not IsValid(prop) then return end
 
                 prop:SetModel( def.mdl )
-
-                -- random origin within 300u of crash centre
                 local ox = math.Rand(-300, 300)
                 local oy = math.Rand(-300, 300)
                 prop:SetPos( crashPos + Vector(ox, oy, 80) )
@@ -63,41 +49,37 @@ local function LaunchDebris( crashPos, spawnAngles )
                 prop:Spawn()
                 prop:Activate()
 
-                -- launch in random direction with arc
                 local phys = prop:GetPhysicsObject()
                 if IsValid(phys) then
                     local angle  = math.Rand(0, 2*math.pi)
                     local hspeed = math.Rand( def.speed * 0.6, def.speed * 1.4 )
                     local vspeed = math.Rand( def.arc   * 0.7, def.arc   * 1.3 )
-                    local vel = Vector(
+                    phys:SetVelocity( Vector(
                         math.cos(angle) * hspeed,
                         math.sin(angle) * hspeed,
                         vspeed
-                    )
-                    phys:SetVelocity( vel )
+                    ) )
                     phys:SetAngleVelocity( Vector( math.Rand(-200,200), math.Rand(-200,200), math.Rand(-200,200) ) )
                     phys:Wake()
                 end
 
-                -- ignite if flagged
                 if def.fire then
                     prop:Ignite( 240, 0 )
                 end
 
-                -- fire damage aura: deal burn damage to nearby players while prop is on fire
                 if def.fire then
                     local dmgTimer = "PropFireDmg_" .. prop:EntIndex()
+                    local world = game.GetWorld()
                     timer.Create( dmgTimer, 0.5, 480, function()
                         if not IsValid(prop) then timer.Remove(dmgTimer) return end
                         for _, ply in ipairs( player.GetAll() ) do
                             if IsValid(ply) and ply:GetPos():Distance(prop:GetPos()) < 120 then
-                                ply:TakeDamage( 8, prop, prop )
+                                ply:TakeDamage( 8, world, world )
                             end
                         end
                     end )
                 end
 
-                -- remove after 90 seconds
                 timer.Simple( 90, function()
                     if IsValid(prop) then prop:Remove() end
                 end )
@@ -107,22 +89,19 @@ local function LaunchDebris( crashPos, spawnAngles )
 end
 
 local function ScheduleTNTBlasts( crashPos )
+    local world = game.GetWorld()
     for _, blast in ipairs( TNT_BLASTS ) do
         timer.Simple( blast.t, function()
-            -- random position within 200u of crash centre for variety
             local bpos = crashPos + Vector(
                 math.Rand(-200,200),
                 math.Rand(-200,200),
                 math.Rand(0,80)
             )
-            util.BlastDamage( NULL, NULL, bpos, blast.radius, blast.dmg )
-            -- visual + sound broadcast
+            util.BlastDamage( world, world, bpos, blast.radius, blast.dmg )
+
             net.Start("PlaneCrashEffects")
-                -- reuse the channel to send a TNT_BLAST sub-event
-                -- We send a special marker vector (0,0,-9999) as org
-                -- so cl_init knows this is a TNT event not the initial crash
                 net.WriteVector( bpos )
-                net.WriteVector( Vector(0,0,-9999) )  -- TNT marker
+                net.WriteVector( Vector(0,0,-9999) )  -- TNT marker for cl_init
             net.Broadcast()
 
             sound.Play( "ambient/explosions/explode_" .. math.random(1,9) .. ".wav",
@@ -131,17 +110,17 @@ local function ScheduleTNTBlasts( crashPos )
     end
 end
 
--- Fire damage from the crash fire zones (server-side, area burn)
 local function StartFireDamageZone( crashPos )
+    local world = game.GetWorld()
     local tname = "CrashFireDmg"
     timer.Create( tname, 1.0, 240, function()
         for _, ply in ipairs( player.GetAll() ) do
             if not IsValid(ply) then continue end
             local dist = ply:GetPos():Distance(crashPos)
             if dist < 200 then
-                ply:TakeDamage( 25, NULL, NULL )  -- inside core inferno
+                ply:TakeDamage( 25, world, world )
             elseif dist < 500 then
-                ply:TakeDamage( 10, NULL, NULL )  -- edge of fire
+                ply:TakeDamage( 10, world, world )
             end
         end
     end )
@@ -174,7 +153,6 @@ function ENT:Initialize()
     print( "[PLANECRASH] spawnangles = " .. tostring(spawnangles) )
     print( "[PLANECRASH] map = " .. startmap )
 
-    -- Compute crash position (mirrors cl_init logic)
     local fwdFlat = spawnangles:Forward()
     fwdFlat.z = 0
     fwdFlat:Normalize()
@@ -216,7 +194,6 @@ function ENT:Initialize()
     SetupFuse(fuseK, "models/hybridphysx/airliner_right_wing_secondary_2.mdl")
     SetupFuse(fuseL, "models/hybridphysx/airliner_tail_secondary.mdl")
 
-    -- Broadcast visual effects trigger
     timer.Simple(14.95, function()
         print("[PLANECRASH] Broadcasting PlaneCrashEffects. spawnpos = " .. tostring(spawnpos))
         net.Start("PlaneCrashEffects")
@@ -225,15 +202,12 @@ function ENT:Initialize()
         net.Broadcast()
     end)
 
-    -- After IMPACT_DELAY (8.5s from broadcast = t~23.45 absolute):
-    -- fire damage zone, TNT blasts, and debris launch
     timer.Simple(14.95 + 8.5, function()
         StartFireDamageZone(crashPos)
         ScheduleTNTBlasts(crashPos)
         LaunchDebris(crashPos, spawnangles)
     end)
 
-    -- Debug position snaps
     timer.Simple(17.0, function()
         if not IsValid(fuseA) then print("[PLANECRASH DEBUG t=17] fuseA INVALID") return end
         local p = fuseA:GetPos()
