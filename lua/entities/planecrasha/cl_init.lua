@@ -5,14 +5,12 @@ local TEX_SMOKE = "particle/particle_smokegrenade"
 local TEX_SPARK = "effects/spark"
 
 -- crashPos = spawnpos + fwd*FLIGHT_DIST + right*LATERAL_OFFSET
--- The plane slides ~798 units to the left of its heading after impact.
--- Calibrated from 3 runs of position snaps.
-local FLIGHT_DIST     = 1389
-local LATERAL_OFFSET  = -798   -- negative = left of forward
-local IMPACT_DELAY    = 8.5
+local FLIGHT_DIST    = 1389
+local LATERAL_OFFSET = -798
+local IMPACT_DELAY   = 8.5
 
 -- -------------------------------------------------------------------
--- Helpers
+-- Particle helpers
 -- -------------------------------------------------------------------
 
 local function DoBurstSparks( pos, count )
@@ -148,38 +146,35 @@ local function StartSparkStream( pos, duration )
     end )
 end
 
--- True circular scatter: random angle + random radius so spread is uniform disk
-local function CircularScatterFire( centre, count, radiusMin, radiusMax, duration, sizeMin, sizeMax, timeSpread )
-    timeSpread = timeSpread or 2
+-- Circular scatter helpers
+local function CircularScatterFire( centre, count, rMin, rMax, duration, sizeMin, sizeMax, timeSpread )
     for i = 1, count do
-        local angle  = math.Rand( 0, 2 * math.pi )
-        local radius = math.Rand( radiusMin, radiusMax )
-        local off    = Vector( math.cos(angle)*radius, math.sin(angle)*radius, 0 )
-        timer.Simple( math.Rand(0, timeSpread), function()
+        local a = math.Rand(0, 2*math.pi)
+        local r = math.Rand(rMin, rMax)
+        local off = Vector( math.cos(a)*r, math.sin(a)*r, 0 )
+        timer.Simple( math.Rand(0, timeSpread or 2), function()
             StartFireAt( centre + off, duration, math.Rand(sizeMin, sizeMax) )
         end )
     end
 end
 
-local function CircularScatterSmoke( centre, count, radiusMin, radiusMax, duration, timeSpread )
-    timeSpread = timeSpread or 3
+local function CircularScatterSmoke( centre, count, rMin, rMax, duration, timeSpread )
     for i = 1, count do
-        local angle  = math.Rand( 0, 2 * math.pi )
-        local radius = math.Rand( radiusMin, radiusMax )
-        local off    = Vector( math.cos(angle)*radius, math.sin(angle)*radius, 0 )
-        timer.Simple( math.Rand(0, timeSpread), function()
+        local a = math.Rand(0, 2*math.pi)
+        local r = math.Rand(rMin, rMax)
+        local off = Vector( math.cos(a)*r, math.sin(a)*r, 0 )
+        timer.Simple( math.Rand(0, timeSpread or 3), function()
             StartThinSmokeAt( centre + off, duration, math.Rand(0.5, 1.4) )
         end )
     end
 end
 
-local function CircularScatterSparks( centre, count, radiusMin, radiusMax, duration, timeSpread )
-    timeSpread = timeSpread or 1.5
+local function CircularScatterSparks( centre, count, rMin, rMax, duration, timeSpread )
     for i = 1, count do
-        local angle  = math.Rand( 0, 2 * math.pi )
-        local radius = math.Rand( radiusMin, radiusMax )
-        local off    = Vector( math.cos(angle)*radius, math.sin(angle)*radius, 0 )
-        timer.Simple( math.Rand(0, timeSpread), function()
+        local a = math.Rand(0, 2*math.pi)
+        local r = math.Rand(rMin, rMax)
+        local off = Vector( math.cos(a)*r, math.sin(a)*r, 0 )
+        timer.Simple( math.Rand(0, timeSpread or 1.5), function()
             StartSparkStream( centre + off, duration )
             DoBurstSparks( centre + off, math.random(1,3) )
         end )
@@ -196,115 +191,94 @@ net.Receive( "PlaneCrashEffects", function()
 
     local fwdFlat = Vector( fwd.x, fwd.y, 0 )
     fwdFlat:Normalize()
-    -- right = fwd rotated 90 CW in XY
     local rightFlat = Vector( fwdFlat.y, -fwdFlat.x, 0 )
-
     local crashPos = org + fwdFlat * FLIGHT_DIST + rightFlat * LATERAL_OFFSET
 
-    print( "[PLANECRASH CLIENT] spawnpos  = " .. tostring(org) )
-    print( "[PLANECRASH CLIENT] fwd flat  = " .. tostring(fwdFlat) )
-    print( "[PLANECRASH CLIENT] crashPos  = " .. tostring(crashPos) )
-    print( "[PLANECRASH CLIENT] Waiting " .. IMPACT_DELAY .. "s..." )
+    print( "[PLANECRASH CLIENT] spawnpos = " .. tostring(org) )
+    print( "[PLANECRASH CLIENT] crashPos = " .. tostring(crashPos) )
 
     timer.Simple( IMPACT_DELAY, function()
         print( "[PLANECRASH CLIENT] IMPACT at " .. tostring(crashPos) )
 
-        -- ── Immediate explosions ──────────────────────────────────────
+        -- Immediate explosions
         DoExplosion( crashPos,                             3.0 )
         DoExplosion( crashPos + Vector(  100,  60, 20 ),   2.2 )
         DoExplosion( crashPos + Vector( -110,  40, 15 ),   2.0 )
-        DoExplosion( crashPos + fwdFlat  * 200,            1.8 )
-        DoExplosion( crashPos - fwdFlat  * 180,            1.8 )
+        DoExplosion( crashPos + fwdFlat   * 200,           1.8 )
+        DoExplosion( crashPos - fwdFlat   * 180,           1.8 )
         DoExplosion( crashPos + rightFlat * 220,           1.6 )
         DoExplosion( crashPos - rightFlat * 200,           1.6 )
 
-        -- ── Sparks: circular rings ────────────────────────────────────
-        CircularScatterSparks( crashPos, 12,   0, 150, 4.0, 1.0 )  -- core ring
-        CircularScatterSparks( crashPos, 12, 150, 450, 2.5, 2.0 )  -- mid ring
-        CircularScatterSparks( crashPos,  8, 450, 800, 1.5, 3.0 )  -- outer ring
-        CircularScatterSparks( crashPos,  6, 800,1000, 1.0, 4.0 )  -- far debris
+        -- Sparks
+        CircularScatterSparks( crashPos, 12,   0, 150, 4.0, 1.0 )
+        CircularScatterSparks( crashPos, 12, 150, 450, 2.5, 2.0 )
+        CircularScatterSparks( crashPos,  8, 450, 800, 1.5, 3.0 )
+        CircularScatterSparks( crashPos,  6, 800,1000, 1.0, 4.0 )
 
-        -- ── Fire: core anchors + circular timed spread ────────────────
+        -- Fire rings
         local fd = 240
-        -- Anchored core fires (immediate)
-        StartFireAt( crashPos,                            fd, 2.2 )
-        StartFireAt( crashPos + Vector(  30,  25, 0 ),    fd, 1.9 )
-        StartFireAt( crashPos + Vector( -30, -25, 0 ),    fd, 1.7 )
-        StartFireAt( crashPos + fwdFlat  * 220,           fd, 1.4 )  -- nose
-        StartFireAt( crashPos - fwdFlat  * 180,           fd, 1.2 )  -- tail
-        StartFireAt( crashPos + rightFlat * 250,          fd, 1.5 )  -- left wing
-        StartFireAt( crashPos - rightFlat * 230,          fd, 1.5 )  -- right wing
+        StartFireAt( crashPos,                   fd, 2.2 )
+        StartFireAt( crashPos + Vector(30,25,0),  fd, 1.9 )
+        StartFireAt( crashPos + Vector(-30,-25,0),fd, 1.7 )
+        StartFireAt( crashPos + fwdFlat * 220,    fd, 1.4 )
+        StartFireAt( crashPos - fwdFlat * 180,    fd, 1.2 )
+        StartFireAt( crashPos + rightFlat * 250,  fd, 1.5 )
+        StartFireAt( crashPos - rightFlat * 230,  fd, 1.5 )
+        CircularScatterFire( crashPos, 16,   0, 200, fd, 0.8, 2.0,  3.0 )
+        CircularScatterFire( crashPos, 18, 200, 500, fd, 0.5, 1.4,  5.0 )
+        CircularScatterFire( crashPos, 14, 500, 850, fd, 0.3, 1.0,  8.0 )
+        CircularScatterFire( crashPos, 10, 850,1100, fd, 0.2, 0.7, 10.0 )
 
-        -- Ring 1: dense inner (0-200u), staggered 0-3s
-        CircularScatterFire( crashPos, 16,   0, 200, fd, 0.8, 2.0, 3.0 )
-        -- Ring 2: mid debris (200-500u), staggered 1-6s
-        CircularScatterFire( crashPos, 18, 200, 500, fd, 0.5, 1.4, 5.0 )
-        -- Ring 3: far debris (500-850u), staggered 2-10s
-        CircularScatterFire( crashPos, 14, 500, 850, fd, 0.3, 1.0, 8.0 )
-        -- Ring 4: extreme outer (850-1100u), staggered 4-14s
-        CircularScatterFire( crashPos, 10, 850,1100, fd, 0.2, 0.7,10.0 )
-
-        -- ── Smoke: heavy columns + circular wispy spread ──────────────
+        -- Smoke
         StartSmokeColumnAt( crashPos,                            fd, 2.2 )
         StartSmokeColumnAt( crashPos + Vector(  150, 100, 120 ), fd, 1.7 )
         StartSmokeColumnAt( crashPos + Vector( -160, -90,  90 ), fd, 1.5 )
         StartSmokeColumnAt( crashPos + fwdFlat  * 220,           fd, 1.3 )
         StartSmokeColumnAt( crashPos - fwdFlat  * 180,           fd, 1.1 )
-
         CircularScatterSmoke( crashPos, 12,   0, 300, fd, 2.0 )
         CircularScatterSmoke( crashPos, 14, 300, 700, fd, 4.0 )
         CircularScatterSmoke( crashPos, 10, 700,1100, fd, 6.0 )
 
-        -- ── Rolling secondary blasts ──────────────────────────────────
+        -- Rolling secondary blasts
         timer.Simple( 0.4, function()
             DoExplosion( crashPos + Vector( math.random(-100,100), math.random(-100,100), 12 ), 2.5 )
             CircularScatterSparks( crashPos, 4, 0, 100, 1.5, 0.5 )
         end )
-        timer.Simple( 0.9,  function() DoExplosion( crashPos + fwdFlat * 120 + Vector(0,0,8), 1.8 ) end )
-        timer.Simple( 1.4,  function() DoExplosion( crashPos - fwdFlat * 100 + Vector(0,0,8), 1.6 ) end )
-        timer.Simple( 2.1,  function()
+        timer.Simple( 0.9, function() DoExplosion( crashPos + fwdFlat * 120 + Vector(0,0,8), 1.8 ) end )
+        timer.Simple( 1.4, function() DoExplosion( crashPos - fwdFlat * 100 + Vector(0,0,8), 1.6 ) end )
+        timer.Simple( 2.1, function()
             DoExplosion( crashPos + rightFlat * 180 + Vector(0,0,10), 2.0 )
             DoBurstSparks( crashPos + rightFlat * 180, 4 )
         end )
-        timer.Simple( 3.0,  function() DoExplosion( crashPos - rightFlat * 160 + Vector(0,0,8), 1.7 ) end )
+        timer.Simple( 3.0, function() DoExplosion( crashPos - rightFlat * 160 + Vector(0,0,8), 1.7 ) end )
 
-        -- Synced with ScreenShake beats (net t=14.95 + IMPACT_DELAY=8.5 = t=23.45 absolute)
-        -- Shakes at absolute t=20.5,23,24,26 -> relative to IMPACT: -2.95,-0.45,0.55,2.55
-        -- Adjusted to fire slightly after impact moment:
+        -- ScreenShake-synced secondary blasts
         timer.Simple( 6.05, function()
             DoExplosion( crashPos + Vector( math.random(-90,90), math.random(-90,90), 10 ), 2.5 )
             CircularScatterSparks( crashPos, 3, 0, 80, 1.2, 0.3 )
         end )
         timer.Simple( 8.55, function()
-            DoExplosion( crashPos + Vector( math.random(-70,70), math.random(-70,70),  8 ), 2.0 )
+            DoExplosion( crashPos + Vector( math.random(-70,70), math.random(-70,70), 8 ), 2.0 )
             DoBurstSparks( crashPos + fwdFlat * 80, 3 )
         end )
-        timer.Simple( 9.55, function()
-            DoExplosion( crashPos + Vector( math.random(-60,60), math.random(-60,60),  6 ), 1.8 )
-        end )
+        timer.Simple( 9.55, function() DoExplosion( crashPos + Vector( math.random(-60,60), math.random(-60,60), 6 ), 1.8 ) end )
         timer.Simple( 11.55, function()
-            DoExplosion( crashPos + Vector( math.random(-50,50), math.random(-50,50),  6 ), 1.5 )
+            DoExplosion( crashPos + Vector( math.random(-50,50), math.random(-50,50), 6 ), 1.5 )
             DoBurstSparks( crashPos - rightFlat * 60, 2 )
         end )
 
-        -- Late cooling-metal sparks
+        -- Late cooling sparks
         timer.Simple( 30, function()
             CircularScatterSparks( crashPos, 4, 0, 200, 0.8, 1.0 )
         end )
-    end )  -- end IMPACT_DELAY
+    end )
 end )
 
 net.Receive( "PlaneCrashDebug", function()
     local t   = net.ReadFloat()
     local pos = net.ReadVector()
-    print( "[PLANECRASH CLIENT DEBUG t=" .. t .. "] fuseA:GetPos() = " .. tostring( pos ) )
+    print( "[PLANECRASH CLIENT DEBUG t=" .. t .. "] fuseA:GetPos() = " .. tostring(pos) )
 end )
 
-function ENT:Draw()
-    self:DrawModel()
-end
-
-function ENT:Think()
-    self:NextThink( CurTime() )
-    return true
-end
+function ENT:Draw()  self:DrawModel() end
+function ENT:Think() self:NextThink( CurTime() ) return true end
