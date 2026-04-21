@@ -4,9 +4,9 @@ local TEX_FIRE  = "effects/fire_cloud1"
 local TEX_SMOKE = "particle/particle_smokegrenade"
 local TEX_SPARK = "effects/spark"
 
--- Flight distance from spawnpos to visual crash site (constant across all spawns)
-local FLIGHT_DIST = 1663
--- Delay from net message (t=14.95) to visual impact (t=~23.5)
+-- crashPos = spawnpos + fwdFlat * FLIGHT_DIST
+-- Calibrated from observed crash vs fire placement (error was ~134 units short)
+local FLIGHT_DIST  = 1530
 local IMPACT_DELAY = 8.5
 
 -- -------------------------------------------------------------------
@@ -150,7 +150,7 @@ end
 local function ScatterFire( centre, count, radius, duration, sizeMin, sizeMax )
     for i = 1, count do
         local off = Vector( math.random(-radius,radius), math.random(-radius,radius), math.random(0,20) )
-        timer.Simple( math.random(0,15)/10, function()
+        timer.Simple( math.random(0,20)/10, function()
             StartFireAt( centre + off, duration, math.Rand(sizeMin,sizeMax) )
         end )
     end
@@ -159,7 +159,7 @@ end
 local function ScatterSparks( centre, count, radius, duration )
     for i = 1, count do
         local off = Vector( math.random(-radius,radius), math.random(-radius,radius), math.random(0,10) )
-        timer.Simple( math.random(0,8)/10, function()
+        timer.Simple( math.random(0,12)/10, function()
             StartSparkStream( centre + off, duration )
             DoBurstSparks( centre + off, math.random(1,3) )
         end )
@@ -169,8 +169,8 @@ end
 local function ScatterThinSmoke( centre, count, radius, duration )
     for i = 1, count do
         local off = Vector( math.random(-radius,radius), math.random(-radius,radius), math.random(0,10) )
-        timer.Simple( math.random(0,20)/10, function()
-            StartThinSmokeAt( centre + off, duration, math.Rand(0.5,1.2) )
+        timer.Simple( math.random(0,30)/10, function()
+            StartThinSmokeAt( centre + off, duration, math.Rand(0.5,1.4) )
         end )
     end
 end
@@ -183,9 +183,6 @@ net.Receive( "PlaneCrashEffects", function()
     local org = net.ReadVector()
     local fwd = net.ReadVector()
 
-    -- Crash site is always FLIGHT_DIST units ahead of spawnpos along forward vector.
-    -- fwd is already normalized (sent as spawnangles:Forward()).
-    -- Z is kept flat (plane crashes on the ground, not in the air).
     local fwdFlat = Vector( fwd.x, fwd.y, 0 )
     fwdFlat:Normalize()
     local crashPos = org + fwdFlat * FLIGHT_DIST
@@ -193,49 +190,57 @@ net.Receive( "PlaneCrashEffects", function()
     print( "[PLANECRASH CLIENT] spawnpos  = " .. tostring(org) )
     print( "[PLANECRASH CLIENT] fwd flat  = " .. tostring(fwdFlat) )
     print( "[PLANECRASH CLIENT] crashPos  = " .. tostring(crashPos) )
-    print( "[PLANECRASH CLIENT] Waiting " .. IMPACT_DELAY .. "s for visual impact..." )
+    print( "[PLANECRASH CLIENT] Waiting " .. IMPACT_DELAY .. "s..." )
 
-    -- Everything wrapped in IMPACT_DELAY so effects fire exactly when the
-    -- plane visually hits the ground.
     timer.Simple( IMPACT_DELAY, function()
-        print( "[PLANECRASH CLIENT] IMPACT - spawning effects at " .. tostring(crashPos) )
+        print( "[PLANECRASH CLIENT] IMPACT at " .. tostring(crashPos) )
 
-        -- Immediate big explosions
+        -- Immediate large explosions at impact core
         DoExplosion( crashPos,                             3.0 )
         DoExplosion( crashPos + Vector(  100,  60, 20 ),   2.2 )
         DoExplosion( crashPos + Vector( -110,  40, 15 ),   2.0 )
         DoExplosion( crashPos + Vector(  200,   0, 10 ),   1.8 )
         DoExplosion( crashPos + Vector( -200,   0, 10 ),   1.8 )
 
-        -- Sparks across full wreckage footprint
-        ScatterSparks( crashPos,                          8, 120, 3.5 )
-        ScatterSparks( crashPos + Vector(  220,  80, 0 ), 5,  80, 2.5 )
-        ScatterSparks( crashPos + Vector( -240, -60, 0 ), 5,  80, 2.5 )
-        ScatterSparks( crashPos + fwdFlat * 180,          4,  60, 2.0 )
-        ScatterSparks( crashPos - fwdFlat * 160,          4,  60, 2.0 )
+        -- Sparks: dense near core, spread wide across full debris field
+        ScatterSparks( crashPos,                          10, 150, 4.0 )  -- core
+        ScatterSparks( crashPos,                           8, 500, 2.5 )  -- mid debris
+        ScatterSparks( crashPos,                           6, 900, 1.5 )  -- far debris
+        ScatterSparks( crashPos + fwdFlat *  300,          5, 200, 2.0 )  -- nose slide
+        ScatterSparks( crashPos - fwdFlat *  250,          5, 200, 2.0 )  -- tail
+        ScatterSparks( crashPos + fwdFlat *  600,          3, 150, 1.5 )  -- furthest nose
 
-        -- Fire: key anchors + random scatter
+        -- Fire: anchored wing/nose/tail + heavy scatter across 1000 unit radius
         local fd = 240
         StartFireAt( crashPos,                            fd, 2.2 )
         StartFireAt( crashPos + Vector(  30,  25, 0 ),    fd, 1.8 )
         StartFireAt( crashPos + Vector( -25, -30, 0 ),    fd, 1.6 )
-        StartFireAt( crashPos + Vector(  180,  70, 0 ),   fd, 1.5 )
-        StartFireAt( crashPos + Vector( -200, -50, 0 ),   fd, 1.5 )
-        StartFireAt( crashPos + fwdFlat * 200,            fd, 1.2 )
-        StartFireAt( crashPos - fwdFlat * 150,            fd, 1.0 )
-        ScatterFire(  crashPos, 14, 350, fd, 0.6, 1.8 )
+        StartFireAt( crashPos + Vector(  250,  90, 0 ),   fd, 1.5 )  -- left wing
+        StartFireAt( crashPos + Vector( -270, -70, 0 ),   fd, 1.5 )  -- right wing
+        StartFireAt( crashPos + fwdFlat * 280,            fd, 1.3 )  -- nose
+        StartFireAt( crashPos - fwdFlat * 220,            fd, 1.1 )  -- tail
+        -- Dense scatter near core
+        ScatterFire( crashPos,  10, 200, fd, 0.8, 2.0 )
+        -- Mid-range debris fires
+        ScatterFire( crashPos,  12, 550, fd, 0.5, 1.4 )
+        -- Far scattered small fires from debris throw
+        ScatterFire( crashPos,   8, 900, fd, 0.3, 0.9 )
 
-        -- Smoke columns + thin wisps
+        -- Smoke: heavy columns at core + thin wisps spread to 1000 units
         StartSmokeColumnAt( crashPos,                           fd, 2.2 )
-        StartSmokeColumnAt( crashPos + Vector(  120,  80, 100), fd, 1.6 )
-        StartSmokeColumnAt( crashPos + Vector( -140, -70,  80), fd, 1.4 )
-        StartSmokeColumnAt( crashPos + fwdFlat * 180,           fd, 1.2 )
-        ScatterThinSmoke( crashPos, 18, 380, fd )
+        StartSmokeColumnAt( crashPos + Vector(  150,  100, 120), fd, 1.7 )
+        StartSmokeColumnAt( crashPos + Vector( -170,  -90,  90), fd, 1.5 )
+        StartSmokeColumnAt( crashPos + fwdFlat * 250,           fd, 1.3 )
+        StartSmokeColumnAt( crashPos - fwdFlat * 200,           fd, 1.1 )
+        -- Wispy debris smoke spread across full 1000u field
+        ScatterThinSmoke( crashPos, 10, 300, fd )
+        ScatterThinSmoke( crashPos, 12, 700, fd )
+        ScatterThinSmoke( crashPos,  8, 1000, fd )
 
         -- Rolling secondary blasts
-        timer.Simple( 0.4,  function()
+        timer.Simple( 0.4, function()
             DoExplosion( crashPos + Vector( math.random(-100,100), math.random(-100,100), 12 ), 2.5 )
-            ScatterSparks( crashPos, 4, 100, 1.5 )
+            ScatterSparks( crashPos, 4, 120, 1.5 )
         end )
         timer.Simple( 0.9,  function() DoExplosion( crashPos + Vector(  90, 0, 8 ), 1.8 ) end )
         timer.Simple( 1.4,  function() DoExplosion( crashPos + Vector( -70, 0, 8 ), 1.6 ) end )
@@ -244,9 +249,7 @@ net.Receive( "PlaneCrashEffects", function()
             DoBurstSparks( crashPos + Vector(-130,0,10), 4 )
         end )
 
-        -- Synced with ScreenShake beats (shakes at ENT t=20.5,23,24,26;
-        -- net at t=14.95; IMPACT_DELAY=8.5 -> shakes hit at local t=6.05-11.55
-        -- relative to this inner timer's start. Remapped: 6.05,8.55,9.55,11.55)
+        -- Synced with ScreenShake beats
         timer.Simple( 6.05, function()
             DoExplosion( crashPos + Vector( math.random(-90,90), math.random(-90,90), 10 ), 2.5 )
             ScatterSparks( crashPos, 3, 80, 1.2 )
@@ -272,7 +275,6 @@ net.Receive( "PlaneCrashEffects", function()
     end )  -- end IMPACT_DELAY
 end )
 
--- Debug receiver kept for re-calibration
 net.Receive( "PlaneCrashDebug", function()
     local t   = net.ReadFloat()
     local pos = net.ReadVector()
