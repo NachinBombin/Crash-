@@ -6,6 +6,7 @@ AddCSLuaFile("shared.lua")
 include("shared.lua")
 
 util.AddNetworkString( "PlaneCrashEffects" )
+util.AddNetworkString( "PlaneCrashDebug" )
 
 function ENT:Initialize()
    local gonetimer = cvars.Number( "l4dplanecrash_gonetime", -1 )
@@ -27,6 +28,12 @@ function ENT:Initialize()
    self:SetAngles( spawnangles - Angle( 0, 180, 0 ) )
    local spawnangles = self:GetAngles()
    local spawnpos = self:GetPos()
+
+   -- SERVER DEBUG: log spawnpos so we know the entity origin
+   print( "[PLANECRASH] ENT spawned. spawnpos = " .. tostring( spawnpos ) )
+   print( "[PLANECRASH] spawnangles = " .. tostring( spawnangles ) )
+   print( "[PLANECRASH] map = " .. startmap )
+
    local fuseA = ents.Create( "prop_dynamic_override" )
    local fuseB = ents.Create( "prop_dynamic_override" )
    local fuseC = ents.Create( "prop_dynamic_override" )
@@ -112,24 +119,54 @@ function ENT:Initialize()
    timer.Simple( 14.95, function() fuseL:Spawn() end )
    timer.Simple( 14.96, function() fuseL:ResetSequence( "boom" ) end )
 
-   -- Wait until the boom animation has visually settled (~2.5s in).
-   -- GetBonePosition(0) returns the root bone world position, which follows
-   -- the animation transform -- unlike GetPos() which stays at spawn origin.
-   timer.Simple( 17.5, function()
-      if not IsValid( fuseA ) then return end
-      local bonePos, _ = fuseA:GetBonePosition( 0 )
-      -- Fallback: if bone returns nil or zero vector, drop a traceline from
-      -- spawnpos downward to find the ground directly below.
-      if not bonePos or bonePos == Vector(0,0,0) then
-         local tr = util.TraceLine({
-            start  = spawnpos + Vector(0,0,100),
-            endpos = spawnpos - Vector(0,0,2000),
-            mask   = MASK_SOLID_BRUSHONLY
-         })
-         bonePos = tr.Hit and tr.HitPos or spawnpos
-      end
+   -- Broadcast spawnpos the moment debris spawns. This is reliable.
+   -- The client will delay effects internally and log positions for calibration.
+   timer.Simple( 14.95, function()
+      print( "[PLANECRASH] Broadcasting PlaneCrashEffects. spawnpos = " .. tostring( spawnpos ) )
       net.Start( "PlaneCrashEffects" )
-         net.WriteVector( bonePos )
+         net.WriteVector( spawnpos )
+         net.WriteVector( spawnangles:Forward() )  -- forward dir for offset math
+      net.Broadcast()
+   end )
+
+   -- Debug broadcast at t=17, t=20, t=23 so client can log fuseA positions
+   -- over time to find the true visual resting place
+   timer.Simple( 17.0, function()
+      if not IsValid( fuseA ) then
+         print( "[PLANECRASH DEBUG t=17] fuseA is INVALID" )
+         return
+      end
+      local p = fuseA:GetPos()
+      print( "[PLANECRASH DEBUG t=17] fuseA:GetPos() = " .. tostring(p) )
+      net.Start( "PlaneCrashDebug" )
+         net.WriteFloat( 17 )
+         net.WriteVector( p )
+      net.Broadcast()
+   end )
+
+   timer.Simple( 20.0, function()
+      if not IsValid( fuseA ) then
+         print( "[PLANECRASH DEBUG t=20] fuseA is INVALID" )
+         return
+      end
+      local p = fuseA:GetPos()
+      print( "[PLANECRASH DEBUG t=20] fuseA:GetPos() = " .. tostring(p) )
+      net.Start( "PlaneCrashDebug" )
+         net.WriteFloat( 20 )
+         net.WriteVector( p )
+      net.Broadcast()
+   end )
+
+   timer.Simple( 23.0, function()
+      if not IsValid( fuseA ) then
+         print( "[PLANECRASH DEBUG t=23] fuseA is INVALID" )
+         return
+      end
+      local p = fuseA:GetPos()
+      print( "[PLANECRASH DEBUG t=23] fuseA:GetPos() = " .. tostring(p) )
+      net.Start( "PlaneCrashDebug" )
+         net.WriteFloat( 23 )
+         net.WriteVector( p )
       net.Broadcast()
    end )
 
