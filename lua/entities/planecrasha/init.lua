@@ -5,6 +5,7 @@ include("shared.lua")
 util.AddNetworkString( "PlaneCrashEffects" )
 util.AddNetworkString( "PlaneCrashDebug" )
 
+-- MK-82 removed (lag source)
 local DEBRIS_PROPS = {
     { mdl="models/props_junk/propane_tank001a.mdl",       count=10, speed=900,  arc=600,  fire=true  },
     { mdl="models/props_junk/wood_crate001a_damaged.mdl", count=4,  speed=600,  arc=450,  fire=true  },
@@ -12,7 +13,6 @@ local DEBRIS_PROPS = {
     { mdl="models/xqm/jetenginelarge.mdl",                count=2,  speed=800,  arc=550,  fire=true  },
     { mdl="models/xqm/deg90.mdl",                         count=3,  speed=650,  arc=480,  fire=true  },
     { mdl="models/props_phx/carseat3.mdl",                count=8,  speed=750,  arc=520,  fire=false },
-    { mdl="models/props_phx/mk-82.mdl",                   count=6,  speed=1800, arc=700,  fire=true  },
     { mdl="models/props_c17/doll01.mdl",                  count=1,  speed=500,  arc=400,  fire=false },
     { mdl="models/props_c17/SuitCase001a.mdl",            count=2,  speed=550,  arc=380,  fire=false },
     { mdl="models/props_c17/BriefCase001a.mdl",           count=2,  speed=600,  arc=420,  fire=true  },
@@ -34,20 +34,30 @@ local TNT_BLASTS = {
     { t=24.0, dmg=40,   radius=100  },
 }
 
-local function LaunchDebris( crashPos, spawnAngles )
+local function LaunchDebris( crashPos )
     for _, def in ipairs( DEBRIS_PROPS ) do
         for i = 1, def.count do
-            timer.Simple( math.Rand(0, 2.5), function()
+            -- stagger spawns over 3s to spread CPU cost
+            timer.Simple( math.Rand(0, 3.0), function()
                 local prop = ents.Create("prop_physics")
                 if not IsValid(prop) then return end
 
                 prop:SetModel( def.mdl )
-                local ox = math.Rand(-300, 300)
-                local oy = math.Rand(-300, 300)
-                prop:SetPos( crashPos + Vector(ox, oy, 80) )
+                prop:SetPos( crashPos + Vector( math.Rand(-300,300), math.Rand(-300,300), 80 ) )
                 prop:SetAngles( Angle( math.Rand(0,360), math.Rand(0,360), math.Rand(0,360) ) )
+
+                -- disable collisions until the prop has cleared the spawn area,
+                -- avoids early collision events taxing the engine
+                prop:SetCollisionGroup( COLLISION_GROUP_DEBRIS_TRIGGER )
                 prop:Spawn()
                 prop:Activate()
+
+                -- re-enable real collision after 1.5s so mid-air and landing still work
+                timer.Simple( 1.5, function()
+                    if IsValid(prop) then
+                        prop:SetCollisionGroup( COLLISION_GROUP_NONE )
+                    end
+                end )
 
                 local phys = prop:GetPhysicsObject()
                 if IsValid(phys) then
@@ -64,13 +74,13 @@ local function LaunchDebris( crashPos, spawnAngles )
                 end
 
                 if def.fire then
-                    prop:Ignite( 240, 0 )
+                    prop:Ignite( 60, 0 )  -- fire lasts 60s (was 240)
                 end
 
                 if def.fire then
                     local dmgTimer = "PropFireDmg_" .. prop:EntIndex()
                     local world = game.GetWorld()
-                    timer.Create( dmgTimer, 0.5, 480, function()
+                    timer.Create( dmgTimer, 0.5, 120, function()  -- 120 ticks = 60s
                         if not IsValid(prop) then timer.Remove(dmgTimer) return end
                         for _, ply in ipairs( player.GetAll() ) do
                             if IsValid(ply) and ply:GetPos():Distance(prop:GetPos()) < 120 then
@@ -101,7 +111,7 @@ local function ScheduleTNTBlasts( crashPos )
 
             net.Start("PlaneCrashEffects")
                 net.WriteVector( bpos )
-                net.WriteVector( Vector(0,0,-9999) )  -- TNT marker for cl_init
+                net.WriteVector( Vector(0,0,-9999) )  -- TNT marker
             net.Broadcast()
 
             sound.Play( "ambient/explosions/explode_" .. math.random(1,9) .. ".wav",
@@ -113,7 +123,7 @@ end
 local function StartFireDamageZone( crashPos )
     local world = game.GetWorld()
     local tname = "CrashFireDmg"
-    timer.Create( tname, 1.0, 240, function()
+    timer.Create( tname, 1.0, 90, function()  -- 90s zone (was 240)
         for _, ply in ipairs( player.GetAll() ) do
             if not IsValid(ply) then continue end
             local dist = ply:GetPos():Distance(crashPos)
@@ -205,7 +215,7 @@ function ENT:Initialize()
     timer.Simple(14.95 + 8.5, function()
         StartFireDamageZone(crashPos)
         ScheduleTNTBlasts(crashPos)
-        LaunchDebris(crashPos, spawnangles)
+        LaunchDebris(crashPos)
     end)
 
     timer.Simple(17.0, function()
